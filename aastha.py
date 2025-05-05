@@ -9,23 +9,20 @@ import plotly.express as px
 # Page configuration
 st.set_page_config(page_title="Tokyo Stock Explorer", layout="wide")
 
-# Remove Background Image and Style (Just default background and black text)
+# Styling to remove background and enforce clean look
 def remove_bg():
     st.markdown(
          """
          <style>
          .stApp {{
-             background-color: white;  /* Default background color */
-             color: black;  /* Text color */
-         }}
-         .stApp > .main {{
-             background-color: rgba(255, 255, 255, 0.8);  /* Slight transparency for better readability */
+             background-color: white;
+             color: black;
          }}
          h1, h2, h3, h4, h5, h6, p {{
-             color: black;  /* Ensuring all text is black */
+             color: black;
          }}
          .stSidebar {{
-             background-color: rgba(255, 255, 255, 0.9); /* Optional: Add a slight transparent background to sidebar */
+             background-color: rgba(255, 255, 255, 0.9);
              color: black;
          }}
          </style>
@@ -35,15 +32,18 @@ def remove_bg():
 
 remove_bg()
 
-# App Title
+# App title
 st.title("📈 Tokyo Stock Price Explorer")
 st.write("Explore major Japanese companies' stock prices between April 2023 and April 2025.")
 
-# Dates
+# Date range
 start_date = datetime.datetime(2023, 4, 1)
 end_date = datetime.datetime(2025, 4, 27)
 
-# Load data function
+# Sidebar - CSV Upload
+st.sidebar.header("Upload or Use Live Data")
+uploaded_file = st.sidebar.file_uploader("tokyo_index.csv", type=["csv"])
+
 @st.cache_data
 def load_data():
     companies = {
@@ -58,7 +58,7 @@ def load_data():
         'FUJITSU': '6702.T',
         'JAPAN AIRLINES': '9201.T'
     }
-    
+
     frames = []
     for name, ticker in companies.items():
         data = yf.download(ticker, start=start_date, end=end_date)
@@ -66,20 +66,30 @@ def load_data():
         data = data.reset_index()
         data['Symbol'] = name
         frames.append(data)
-    
+
     df = pd.concat(frames, axis=0)
     df['Price_change'] = df['Close'] - df['Open']
     df['High_Low_Spread'] = df['High'] - df['Low']
     df['Close_Open_Spread'] = df['Close'] - df['Open']
     return df
 
-# Show loading spinner
-with st.spinner('Fetching stock data... Please wait...'):
-    df = load_data()
+@st.cache_data
+def convert_df(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+# Load dataset
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    df['Date'] = pd.to_datetime(df['Date'])
+    st.success("✅ Uploaded CSV loaded successfully!")
+else:
+    with st.spinner('Fetching stock data from Yahoo Finance...'):
+        df = load_data()
+        st.info("ℹ️ Using live data from Yahoo Finance.")
 
 # Sidebar - Stock selection
 st.sidebar.header("Select Stock")
-symbols = df.Symbol.unique()
+symbols = df['Symbol'].unique()
 selected_stock = st.sidebar.selectbox("Choose a stock to visualize:", symbols)
 
 # Sidebar - Chart settings
@@ -88,14 +98,9 @@ chart_type = st.sidebar.radio("Choose chart type:", ['Static (Seaborn)', 'Intera
 
 # Sidebar - Download data
 st.sidebar.header("Download Data")
-@st.cache_data
-def convert_df(df):
-    return df.to_csv(index=False).encode('utf-8')
-
 csv = convert_df(df)
-
 st.sidebar.download_button(
-    label="Download full dataset as CSV",
+    label="Download dataset as CSV",
     data=csv,
     file_name='tokyo_index.csv',
     mime='text/csv',
@@ -109,7 +114,7 @@ st.subheader(f"📊 Closing Price Trend for {selected_stock}")
 
 if chart_type == 'Static (Seaborn)':
     fig, ax = plt.subplots(figsize=(12, 6))
-    sns.lineplot(x=stk.Date, y=stk.Close, ax=ax)
+    sns.lineplot(x=stk['Date'], y=stk['Close'], ax=ax)
     plt.xticks(rotation=45)
     plt.xlabel("Date")
     plt.ylabel("Close Price (JPY)")
